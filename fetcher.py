@@ -6,13 +6,13 @@ from scrapy.selector import Selector
 from scrapy.http.request import Request
 import requests
 from bs4 import BeautifulSoup
+import pandas
 from fields import ImdbItem
 
 
 item = {}
 
-
-def parse(base_url):
+def parse(base_url, item_count):
 
     print("parsing")    
     
@@ -24,11 +24,25 @@ def parse(base_url):
     res = BeautifulSoup(response.content, features='lxml')
     movie_list = res.find("tbody", class_="lister-list")
     url_list = movie_list.find_all('tr')
+    
+    checkForCount(url_list, item_count)
 
-    print("url_list", url_list)
     
-    print("item", item)
-    
+def checkForCount(url_list, item_count):
+    print("Check count")
+    dataframe = pandas.DataFrame(columns= ['key', 'url'])
+    for i, elem in enumerate(url_list):
+            if(i < int(item_count)):
+                wrapper= elem.find("td", class_="titleColumn")
+                tag = wrapper.find("a",  href=True)
+                link = tag['href']
+                dataframe = dataframe.append({'key': i, 'url': 'https://www.imdb.com/' + str(link)}, ignore_index=True) # ignore_indexbool, default False
+    # with open("./url_list/moview_list.csv","r") as fp:
+    #     pass
+
+    dataframe.to_csv('./url_list/movie_list.csv', index=False)
+
+
 
 def parse_movie(response):
     
@@ -94,5 +108,5 @@ if __name__ == "__main__":
 
     print("hi")
     base_url = 'https://www.imdb.com/india/top-rated-indian-movies'
-    scrapper =  parse(base_url)
+    scrapper =  parse(base_url, 3)
     
