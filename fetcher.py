@@ -1,112 +1,116 @@
-# from flask import Flask
 import sys
 import json
-# from scrapy import Spider
-from scrapy.selector import Selector
-from scrapy.http.request import Request
 import requests
 from bs4 import BeautifulSoup
 import pandas
-from fields import ImdbItem
 
-
-item = {}
-
-def parse(base_url, item_count):
-
-    print("parsing")    
-    
-    header = ({'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36',
-        'Accept-Language':'en-GB,en-US;q=0.9,en;q=0.8',
-        'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9'})
-
-    response = requests.get(base_url, headers=header)
-    res = BeautifulSoup(response.content, features='lxml')
-    movie_list = res.find("tbody", class_="lister-list")
-    url_list = movie_list.find_all('tr')
-    
-    checkForCount(url_list, item_count)
-
-    
-def checkForCount(url_list, item_count):
-    print("Check count")
-    dataframe = pandas.DataFrame(columns= ['key', 'url'])
-    for i, elem in enumerate(url_list):
-            if(i < int(item_count)):
-                wrapper= elem.find("td", class_="titleColumn")
-                tag = wrapper.find("a",  href=True)
-                link = tag['href']
-                dataframe = dataframe.append({'key': i, 'url': 'https://www.imdb.com/' + str(link)}, ignore_index=True) # ignore_indexbool, default False
-    # with open("./url_list/moview_list.csv","r") as fp:
-    #     pass
-
-    dataframe.to_csv('./url_list/movie_list.csv', index=False)
-
-
-
-def parse_movie(response):
-    
-    sel = Selector(response)
-    
-    item['title'] = get_title(sel) 
-    item['duration'] = get_duration(sel)
-    item['genre'] = get_genre(sel)
-    item['year'] = get_movie_release_year(sel)
-    item['rating'] = get_rating(sel)
-    item['summary'] = get_summary(sel)
-    
-    return item
-
-def get_title(self, selector):
-    
-    title = selector.xpath('//h1[@class="header"]/span[@itemprop ="name"]/text()').extract()[0]
-    
-    return self.trim(title)
-
-def get_movie_release_year(self, selector):
-    
-    year = selector.xpath('//h1[@class="header"]/span/a/text()').extract()[0]
-    # To-do
-    return self.trim(year)
-
-def get_rating(self, selector):
-    
-    rating = selector.xpath('//span[@itemprop="ratingValue"]/text()').extract()[0]
-
-    return float(self.trim(rating))
-
-def get_summary(self, selector):
-    
-    summary = selector.xpath('//td[@id="overview-top"]/p[@itemprop="description"]/text()').extract()[0]
-    
-    return self.trim(summary)
-
-def get_duration(self, selector):
-    
-    duration = selector.xpath('//time[@itemprop="duration"]/text()').extract()[0]
-
-    return int(self.trim(duration).split()[0])
-
-def get_genre(self, selector):
-    
-    genre = selector.xpath('//span[@itemprop="genre"]/text()').extract()
-
-    return self.trim_list(genre)
-
-def trim(self, raw_str):
+class Scrapper():
+    def __init__(self) -> None:
         
-        return raw_str.encode('ascii', errors='ignore').strip()
+        self.header = ({'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36',
+            'Accept-Language':'en-GB,en-US;q=0.9,en;q=0.8',
+            'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9'})
 
-def trim_list(self, raw_list):
-       
-        return [self.trim(raw_str) for raw_str in raw_list]
+    def parse(self, chart_url, item_count):        
 
+        response = requests.get(chart_url, headers=self.header)
+        res = BeautifulSoup(response.content, features='lxml')
+        movie_list = res.find("tbody", class_="lister-list")
+        url_list = movie_list.find_all('tr')
+        
+        self.check_for_count(url_list, item_count)
+
+    
+    def check_for_count(self, url_list, item_count):
+        
+        dataframe = pandas.DataFrame(columns= ['index', 'url'])
+        for i, elem in enumerate(url_list):
+                if(i < int(item_count)):
+                    wrapper= elem.find("td", class_="titleColumn")
+                    tag = wrapper.find("a",  href=True)
+                    link = tag['href']
+                    dataframe = dataframe.append({'index': i, 'url': 'https://www.imdb.com/' + str(link)}, ignore_index=True) # ignore_indexbool, default False
+        # with open("./url_list/moview_list.csv","r") as fp:
+        #     pass
+
+        dataframe.to_csv('./url_list/movie_list.csv', index=False)
+
+
+    def extractDetails(self):
+        
+        result = []
+        dataframe = pandas.read_csv('./url_list/movie_list.csv')
+        all_urls = dataframe['url']
+
+        item = {}
+        for i, url in enumerate(all_urls):
+            page = requests.get(url, headers=self.header)
+            soup = BeautifulSoup(page.content, features='lxml')
+
+            item['title'], title_year, title_wrapper = self.get_title(soup) 
+            item['year'] = self.get_movie_release_year(soup, title_year)
+            item['rating'] = self.get_rating(soup)
+            item['summary'] = self.get_summary(soup)
+            item['duration'] = self.get_duration(title_wrapper)
+            item['genre'] = self.get_genre(title_wrapper)
+
+            result.append(item)
+
+        result = json.dumps(result)
+        return result
+
+
+    def get_title(self, soup):
+        
+        title_wrapper = soup.find("div", class_="title_wrapper")
+        title_year = title_wrapper.find("h1").text.strip()
+        title = title_year.split('(')[0].strip()
+        return title, title_year, title_wrapper
+
+    def get_movie_release_year(self, soup, title_year):
+    
+        year = title_year.split('(')[1][:-1]
+        return year
+
+    def get_rating(self, soup):
+        
+        imdb_rating = soup.find("span", itemprop="ratingValue").text.strip()
+        return imdb_rating
+
+    def get_summary(self, soup):
+        
+        summary = soup.find("div", class_="summary_text").text.strip()
+        return summary
+
+    def get_duration(self, title_wrapper):
+        
+        sub_text = title_wrapper.find("div", class_="subtext")
+        duration = sub_text.find("time").text.strip()
+        return duration
+
+    def get_genre(self, title_wrapper):
+        
+        sub_text = title_wrapper.find("div", class_="subtext")
+        genre_tags = sub_text.find_all("a", text=True)
+        genre = ""
+        for genre_tag in genre_tags[:-1]:
+            genre += genre_tag.text.strip() + ' '
+        genre = genre.rstrip()      
+        genre = genre.replace(" ", ", ")    
+        return genre
+        
 
 if __name__ == "__main__":
-    # chart_url = sys.argv[1]
-    # items_count = sys.argv[2]
+    chart_url = sys.argv[1]
+    items_count = sys.argv[2]
 
-    print("hi")
-    base_url = 'https://www.imdb.com/india/top-rated-indian-movies'
-    scrapper =  parse(base_url, 3)
-    
+    s = Scrapper()
+    try:
+        scrapper = s.parse(chart_url, items_count)
+    except:
+        raise Exception("Failed to get movie URLs")
+    try:
+        result = s.extractDetails()
+        print("result", result)
+    except:    
+        raise Exception("Failed to extract movie deatils")

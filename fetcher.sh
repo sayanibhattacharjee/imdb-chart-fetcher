@@ -1,1 +1,1 @@
-FLASK_APP=fetcher.py flask run
+python fetcher.py "$@"
